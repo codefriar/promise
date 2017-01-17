@@ -24,6 +24,7 @@ Unfortunately, that code can take 10ms or 30sec to run. By isolating that code i
 1. First, identify the steps in your workflow.
 2. Create a class that implements the Promise.PromiseStep interface for each step in your workflow. Each class' resolve method is responsible for doing any async work such as callouts etc. Note that the framework will call each steps' resolve method with a parameter that is the result of the previous steps' resolve method.
 3. Where you want to start the execution of your promise chain, implement code similar to this:
+
 ```apex
 new Promise(new Demo_PromiseStep())
         .then(new Demo_PromiseStep_Two())
