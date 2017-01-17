@@ -33,3 +33,7 @@ new Promise(new Demo_PromiseStep())
 ```
 
 ## Installation
+<a href="https://githubsfdeploy.herokuapp.com?owner=codefriar&repo=promise">
+  <img alt="Deploy to Salesforce"
+       src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
+</a>
