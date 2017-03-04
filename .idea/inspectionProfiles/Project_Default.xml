@@ -1,0 +1,12 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="LightningLint" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="herokuPath" value="/usr/local/heroku/bin/heroku" />
+    </inspection_tool>
+    <inspection_tool class="PMDApex" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="pmdPath" value="/Applications/pmd-bin-5.5.3/bin/run.sh" />
+      <option name="rulesetPath" value="$USER_HOME$/Documents/apex-ruleset.xml" />
+    </inspection_tool>
+  </profile>
+</component>
