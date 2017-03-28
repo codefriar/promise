@@ -1,182 +1,183 @@
-/*
- * PromiseBase.cls
- * Author: Kevin Poorman, with heavy influence from Chuck Jonas
- * Email: kjp@codefriar.com
- * Github: https://github.com/codefriar/promise
- * This is Promise, a library for asynchronous Apex execution using the promise pattern and Queueable Apex.
- * This code was derived from Chuck Jonas' work here: https://github.com/ChuckJonas/APEX-Q
- * Which in turn was distilled from a Dreamforce '16 presentation I did.
- */
+Public Virtual Class Promise Implements Queueable, Database.AllowsCallouts {
+  //   ___           _                     __     __
+  //  |_ _|_ __  ___| |_ __ _ _ __   ___ ___ \   / /_ _ _ __ ___
+  //   | || '_ \/ __| __/ _` | '_ \ / __/ _ \ \ / / _` | '__/ __|
+  //   | || | | \__ \ |_ (_| | | | | (__  __/\ V / (_| | |  \__ \
+  //  |___|_| |_|___/\__\__,_|_| |_|\___\___| \_/ \__,_|_|  |___/
+  //
 
-// This class implements two standard interfaces from the SF Platform:
-// * Queueable - which allows for async queuing and processing
-// * Database.AllowsCallouts - which allows for making http callouts
-Public Class Promise Extends PromiseBase Implements Queueable, Database.AllowsCallouts {
-
-  // This list holds the steps of your promise chain.
-  Protected List<SerializableData> steps = new List<SerializableData>();
-
-  // Constructors
-  Public Promise() {
-  }
-  Public Promise(PromiseStep promiseStep) {
-    then(promiseStep);
-  }
+  /*
+   * promiseStack is the fundamental data structure used to chain Promise.derer
+   * instances. Because lists are ordered, we can ensure the order of execution
+   * of the various steps in this promise chain.
+   */
+  Protected List<Promise.Deferred> promiseStack = new List<Promise.Deferred>();
 
   /**
-   * Add a new promise promiseStep to the execution stack
-   * @param         promiseStep PromiseStep to execute
-   * @return        this (enables chaining)
+   * promiseData stores the results of the immediately previous execution step
+   *    the .execute(QueueableContext qc) method passes the current value of
+   *    this variable into the *next* Promise.Deferred implementing classes
+   *    resolve method.
+   *
+   *  N.B. The original call to .execute(Object o) sets the value of this
+   *    this variable to o.
    */
-  Public PromiseBase then(Promise.PromiseStep promiseStep) {
-    steps.add(new SerializableData(promiseStep));
+  Protected Object promiseData;
+
+
+  /**
+   * These two variables hold references to this promise chain's
+   *    error and done handlers. These handlers are executed in
+   *    the event of an error, or when the chain completes all
+   *    the promiseStacks instances' .resolve() methods
+   */
+  Protected Promise.Error errorHandler;
+  Protected Promise.Done doneHandler;
+
+  //    ____                _                   _
+  //   / ___|___  _ __  ___| |_ _ __ _   _  ___| |_ ___  _ __ ___
+  //  | |   / _ \| '_ \/ __| __| '__| | | |/ __| __/ _ \| '__/ __|
+  //  | |___ (_) | | | \__ \ |_| |  | |_| | (__| |_ (_) | |  \__ \
+  //   \____\___/|_| |_|___/\__|_|   \__,_|\___|\__\___/|_|  |___/
+  //
+
+  /*
+   * Constructor.
+   * @param Promise.Deferred deferred - Instance of class that implements Promise.Deferred
+   * returns Promise instance
+   */
+  Public Promise(Promise.Deferred deferred) {
+    then(deferred);
+  }
+
+  //   __  __      _   _               _
+  //  |  \/  | ___| |_| |__   ___   __| |___
+  //  | |\/| |/ _ \ __| '_ \ / _ \ / _` / __|
+  //  | |  | |  __/ |_| | | | (_) | (_| \__ \
+  //  |_|  |_|\___|\__|_| |_|\___/ \__,_|___/
+  //
+
+  /**
+   * Add a new Promise.Deferred class instance to the promise stack
+   * @param   Promise.Deferred deferred class to execute asynchronusly (But in order)
+   * @return  this (for chaining)
+   */
+  Public Promise then(Promise.Deferred deferred) {
+    promiseStack.add(deferred);
     return this;
   }
 
   /**
-   * Begin the execution of the steps contained in the steps list.
-   * @param           QueableContext qc - injected by the system
-   * @return          void
+   * Sets the error (Catch) handler.
+   * While you can only set one error handler, that error handler
+   *    can be written to parse different types etc.
+   * @param  errorHandler The handler to use
+   * @return              this (for chaining)
    */
-  Public Void execute(QueueableContext qc) {
-    Promise.PromiseStep currentPromiseStep; // will hold the deserialized object representing the current step
-    SerializableData resolution; // will hold the output of this steps resolve function
-    try {
-      // pop the first step item off the list then deserialize it into the currentPromiseStep variable
-      SerializableData sd = (SerializableData) steps.remove(0);
-      currentPromiseStep = (Promise.PromiseStep) JSON.deserialize(sd.objJson, Type.forName(sd.classType));
-      // execute the current step's resolve function
-      resolution = (SerializableData) currentPromiseStep.resolve(dataPassthrough);
+  Public Promise error(Promise.Error errorHandler) {
+    this.errorHandler = errorHandler;
+    return this;
+  }
 
-      // Having executed the current step, lets see if there any other steps to invoke?
-      if (steps.size() > 0) {
-        // if there are other steps, enqueue the next step.
-        Promise.enqueueJobInFture(
-          getInstanceClassName(this),
-          JSON.Serialize(steps),
-          resolution.objJson,
-          resolution.classType,
-          (errorHandler == null) ? null : JSON.serialize(errorHandler),
-          getInstanceClassName(errorHandler),
-          (doneHandler == null) ? null : JSON.serialize(doneHandler),
-          getInstanceClassName(doneHandler)
-        );
+  /**
+   * Sets the Done (Finally) handler.
+   * While you can set only one done handler, you should be aware
+   *    that the done handler *always* runs. *always*
+   * @param  doneHandler The handler to use
+   * @return             this (for chaining)
+   */
+  Public Promise done(Promise.Done doneHandler) {
+    this.doneHandler = doneHandler;
+    return this;
+  }
+
+
+  //   ____                      _          _____                     _   _
+  //  |  _ \ _ __ ___  _ __ ___ (_)___  ___| ____|_  _____  ___ _   _| |_(_) ___  _ __
+  //  | |_) | '__/ _ \| '_ ` _ \| / __|/ _ \  _| \ \/ / _ \/ __| | | | __| |/ _ \| '_ \
+  //  |  __/| | | (_) | | | | | | \__ \  __/ |___ >  <  __/ (__| |_| | |_| | (_) | | | |
+  //  |_|   |_|  \___/|_| |_| |_|_|___/\___|_____/_/\_\___|\___|\__,_|\__|_|\___/|_| |_|
+  //
+
+  /**
+   * This version of execute kicks off a promise chain.
+   * @param input Object to pass to the first Promise.deferred
+   *    implementing class in the promiseStack
+   */
+  Public Void execute(Object input) {
+    promiseData = input;
+    System.enqueueJob(this);
+  }
+
+  /**
+   * This version of execute kicks off a promise chain
+   *    but crucially does not pass any initial data
+   *    to the first promise.deferred object.
+   */
+  Public Void execute() {
+    System.enqueueJob(this);
+  }
+
+  /**
+   * Iterates through the promiseStack instance variable,
+   *    executing each promiseBase.Deferred instance in a Queueable context
+   * @param context System Injected
+   * @return Void will either return nothing (void) or enqueue the next
+   *    Next item in the promiseStack
+   */
+  Public Void execute(QueueableContext context) {
+    try {
+      Promise.Deferred currentPromise = promiseStack.remove(0);
+      promiseData = currentPromise.resolve(promiseData);
+      if (promiseStack.size() > 0) {
+        System.enqueueJob(this);
         return;
       }
-      // If we've failed at executing the current step, or in enquing the next step, catch the exception here.
-    } catch (Exception pe) {
-      // if the error handler class has been specified then we'll invoke the errorHandler's error method with the
-      // exception.
-      if (errorHandler != null) {
-        resolution = (SerializableData) errorHandler.error(pe);
-      } else {
-        // otherwise, if we don't have an errorHandler defined, simply log the error, and the stack trace then
-        // pass the exception up.
-        system.debug('An exception has occured during the processing of this Promise Stack. However no Error Handler was defined.\nThe error message is: ' + pe.getMessage() + '\nAnd the stackTrace is: \n' + pe.getStackTraceString());
-        throw pe;
-      }
+    } catch (Exception e) {
+      promiseData = errorHandler.error(e);
     }
-    // If there are no more steps, and if the done handler was specified, invoke it with the results of the
-    // last step.
-    if (doneHandler != null) {
-      doneHandler.done(JSON.deserialize(resolution.objJson, Type.forName(resolution.classType)));
-    }
+    doneHandler.done(promiseData);
   }
 
+  //   ___       _             __
+  //  |_ _|_ __ | |_ ___ _ __ / _| __ _  ___ ___ ___
+  //   | || '_ \| __/ _ \ '__| |_ / _` |/ __/ _ \ __|
+  //   | || | | | |_  __/ |  |  _| (_| | (__  __\__ \
+  //  |___|_| |_|\__\___|_|  |_|  \__,_|\___\___|___/
+  //
+  
   /**
-   * Queuable apex is almost perfect. While Queueable Apex can enqueue other Queueable Apex
-   * classes, when you chain two Queueable Apex classes that each make an HTTP Callout you'll
-   * get the dreaded 'you have uncommitted work pending...' error. Queueable Apex doesn't seem
-   * to reset the DML context upon execution of additional Queueable Apex classes.
+   * The Deferred interface specifies only the resolve method
+   *    This resolve method must accept and return an Object.
+   *    The Promise.execute() method injects the output of the
+   *    previous step into the current step's resolve method.
    *
-   * To 'fix' this, and allow any given promiseStep to make an http callout, this lib
-   * enqueues the individual steps from an @future context. This effectively resets the DML
-   * context and allows each step to make a callout while still being chained together.
+   * This allows you to pass data from one Promise.Deferred
+   *    implementing class to the next.
+   *
    */
-  @future(Callout=true)
-  Public Static Void enqueueJobInFture(String promiseClassName,
-    String promiseStack,
-    String dataPassthrough,
-    String dataPassThroughType,
-    String error,
-    String errorClassName,
-    String done,
-    String doneClassName) {
-    // Each of the inputs is a string, which is why the individual steps must all be serializable as JSON!
-    // Create an empty promise
-    Promise p = new Promise();
-    // Having popped the current step off the step list earlier, we now set the new promise's steps to
-    // the remaining steps that were serialized and passed in.
-    p.steps = (List<SerializableData>) JSON.deserialize(promiseStack, SerializableData[].class);
-
-    // if we have an error handler, set it.
-    if (error != null && errorClassName != null) {
-      p.error((Promise.Error) JSON.deserialize(error, Type.forName(errorClassName)));
-    }
-
-    // if we have a done handler, set it.
-    if (done != null && doneClassName != null) {
-      p.done((Promise.Done) JSON.deserialize(done, Type.forName(doneClassName)));
-    }
-
-    // if we have data from the last steps' resolution set it here.
-    if (dataPassthrough != null && dataPassThroughType != null) {
-      Type dptType = Type.forName(dataPassThroughType);
-      if (dptType != null) {
-        p.dataPassThrough = JSON.deserialize(dataPassThrough, dptType);
-      } else { // use generic JSON deserialization
-        p.dataPassThrough = JSON.deserializeUntyped(dataPassthrough);
-      }
-    }
-    // finally, enqueue the new promise for execution.
-    System.enqueueJob(p);
-  }
-
-  /**
-   * Standard interfaces
-   * These interfaces define PromiseStep, Error and Done classes required methods.
-   */
-  Public Interface PromiseStep {
+  Public Interface Deferred {
     Object resolve(Object input);
   }
 
+  /**
+   * The Error interface specifies only the error(Exception e)
+   *    method. It's clunky, but the error method must also
+   *    return an object so that the Done handler can be
+   *    executed after an error occurs.
+   */
   Public Interface Error {
     Object error(Exception e);
   }
 
-  Public Interface Done {
-    void done(Object input);
-  }
-
   /**
-   * Because of the @future context, only primitives like Strings can be passed in
-   * As such, we have this serializable data class, that can be serialized to json
-   * and passed arround.
-   *
-   * All your PromiseStep classes should return a SerializedData object!
+   * The Done interface requires only the done(Object) method
+   * to be specified by the end-developer. This method is run
+   * regardless of error status if it's included in the promise
+   * chain.
    */
-  Public class SerializableData {
-    Public String classType { get; Private set; }
-    Public String objJson { get; Private set; }
-    Public SerializableData(Promise.PromiseStep promiseStep) {
-      classType = getInstanceClassName(promiseStep);
-      objJson = JSON.serialize(promiseStep);
-    }
-    Public SerializableData(Object obj, Type t) {
-      this.objJson = JSON.serialize(obj);
-      this.classType = t.getName();
-    }
+  Public Interface Done {
+    Void done(Object input);
   }
 
-  // Helper Methods
-
-  // Quick (and dirty) method to extract the string representation of the class name
-  // from the JSON serialized string.
-  @TestVisible
-  Private Static String getInstanceClassName(Object input) {
-    if (input != null) {
-      return String.valueOf(input).split(':')[0];
-    }
-    return null;
-  }
 }
