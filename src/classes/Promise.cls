@@ -1,4 +1,5 @@
 Public Virtual Class Promise Implements Queueable, Database.AllowsCallouts {
+
     //   ___           _                     __     __
     //  |_ _|_ __  ___| |_ __ _ _ __   ___ ___ \   / /_ _ _ __ ___
     //   | || '_ \/ __| __/ _` | '_ \ / __/ _ \ \ / / _` | '__/ __|
@@ -107,7 +108,6 @@ Public Virtual Class Promise Implements Queueable, Database.AllowsCallouts {
      * @param  errorHandler The handler to use
      * @return              this (for chaining)
      */
-    //noinspection ApexIllegalAssignment,ApexUnresolvableReference
     Public Promise error(Promise.Error errorHandler) {
         errorHandler.setPromise(this);
         this.errorHandler = errorHandler;
@@ -125,6 +125,53 @@ Public Virtual Class Promise Implements Queueable, Database.AllowsCallouts {
         doneHandler.setPromise(this);
         this.doneHandler = doneHandler;
         return this;
+    }
+
+    /**
+     * Puts a value into the state.
+     *
+     * @param name the String key.
+     * @param value the Object value.
+     *
+     * @return this (for chaining)
+     */
+    Public Promise set(String name, Object value) {
+        return put(name, value);
+    }
+
+    /**
+     * Puts a value into the state.
+     *
+     * @param name the String key.
+     * @param value the Object value.
+     *
+     * @return this (for chaining)
+     */
+    Public Promise put(String name, Object value) {
+        this.state.put(name, value);
+        return this;
+    }
+
+    /**
+     * Returns a value from the state.
+     *
+     * @param name the String key.
+     *
+     * @return the stored value, or null if not available.
+     */
+    Public Object get(String name) {
+        return this.state.get(name);
+    }
+
+    /**
+     * Tells whether the state contains a key of the given name.
+     *
+     * @param name the String key.
+     *
+     * @return True if the key exists in state; false otherwise.
+     */
+    Public Boolean containsKey(String name) {
+        return this.state.containsKey(name);
     }
 
 
@@ -206,11 +253,11 @@ Public Virtual Class Promise Implements Queueable, Database.AllowsCallouts {
         doneHandler.done(promiseData);
     }
 
-    //   ___       _             __
-    //  |_ _|_ __ | |_ ___ _ __ / _| __ _  ___ ___ ___
-    //   | || '_ \| __/ _ \ '__| |_ / _` |/ __/ _ \ __|
-    //   | || | | | |_  __/ |  |  _| (_| | (__  __\__ \
-    //  |___|_| |_|\__\___|_|  |_|  \__,_|\___\___|___/
+    //    ____                  ____ _
+    //   | __ )  __ _ ___  ___ / ___| | __ _ ___ ___  ___  ___
+    //   |  _ \ / _` / __|/ _ \ |   | |/ _` / __/ __|/ _ \/ __|
+    //   | |_) | (_| \__ \  __/ |___| | (_| \__ \__ \  __/\__ \
+    //   |____/ \__,_|___/\___|\____|_|\__,_|___/___/\___||___/
     //
 
     /**
